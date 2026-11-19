@@ -4,6 +4,38 @@
 <meta charset="utf-8">
 <title>VTA-GROUP Quản lý tài sản</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Chế độ ứng dụng toàn màn hình trên iPhone/Android: ẩn thanh địa chỉ khi mở từ biểu tượng Màn hình chính -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Quản lý tài sản">
+<meta name="theme-color" content="#6A5AE0">
+<meta name="format-detection" content="telephone=no">
+<script>
+(function(){try{
+  var ic=document.querySelector('link[rel="apple-touch-icon"]');
+  var m={name:"VTA-GROUP Quản lý tài sản",short_name:"Quản lý tài sản",start_url:location.origin+location.pathname,scope:location.origin+"/",display:"standalone",orientation:"portrait",background_color:"#F2F3F5",theme_color:"#6A5AE0",
+    icons:ic?[{src:ic.href,sizes:"180x180",type:"image/png",purpose:"any"}]:[]};
+  var l=document.createElement("link");l.rel="manifest";
+  l.href=URL.createObjectURL(new Blob([JSON.stringify(m)],{type:"application/manifest+json"}));
+  document.head.appendChild(l);
+}catch(e){}})();
+</script>
+<style>
+/* Chế độ ứng dụng (standalone) và màn hình có tai thỏ / thanh vuốt Home */
+html{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+@supports (height:100dvh){.app{min-height:100dvh}.sb{height:100dvh}}
+@media all and (display-mode:standalone){
+  body{overscroll-behavior-y:none;-webkit-touch-callout:none}
+  .pg{padding-bottom:calc(40px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(28px + env(safe-area-inset-bottom,0px))}
+  .dr,.sb{padding-bottom:env(safe-area-inset-bottom,0px)}
+}
+@media (max-width:560px){
+  /* iOS tự phóng to khi chạm vào ô nhập nhỏ hơn 16px: chặn lại */
+  input,select,textarea{font-size:16px}
+}
+</style>
 <script>
 /* ==========================================================================
    CẦU NỐI APPS SCRIPT -> VERCEL / CLOUDFLARE
