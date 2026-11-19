@@ -812,6 +812,22 @@ a,button,[data-act],.sb-a,.tab{touch-action:manipulation}
 }
 /* iPhone tự phóng to trang khi chạm vào ô nhập có chữ nhỏ hơn 16 px: chặn lại trên màn cảm ứng */
 @media (hover:none) and (pointer:coarse){input,select,textarea{font-size:16px}}
+/* ---- Nút quét QR trên điện thoại & khung camera ---- */
+.tb .tb-qr{display:none}
+@media (max-width:900px){.tb .tb-qr{display:inline-flex}}
+.qr-mo{position:fixed;inset:0;z-index:95;background:rgba(17,17,26,.94);display:none;flex-direction:column;color:#fff;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.qr-mo.on{display:flex}
+.qr-mo-dau{display:flex;align-items:center;justify-content:space-between;padding:14px 16px}
+.qr-mo-dau b{font-size:16px;font-weight:600}
+.qr-mo-dau .ibtn{color:#fff;background:rgba(255,255,255,.14);border-color:transparent}
+.qr-mo-than{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 16px;gap:14px;overflow:auto}
+#qrCam{width:100%;max-width:340px;border-radius:16px;overflow:hidden;background:#000;min-height:260px}
+#qrCam video{width:100%;height:auto;display:block;border-radius:16px}
+.qr-mo-loi{color:#FCA5A5;font-size:13px;text-align:center;max-width:320px;line-height:1.5}
+.qr-mo-goi{color:rgba(255,255,255,.72);font-size:13px;text-align:center;max-width:320px;line-height:1.5}
+.qr-mo-chan{padding:12px 16px 20px;display:flex;justify-content:center;gap:10px}
+.qr-mo-chan .btn{background:rgba(255,255,255,.14);color:#fff;border-color:transparent}
 </style>
 </head>
 <body>
@@ -1153,6 +1169,7 @@ function veKhung() {
         '<header class="tb"><button class="ibtn tb-menu" data-act="moSb" aria-label="Menu">' + ic('menu') + '</button>' +
           '<div class="tb-tim" data-act="moQk">' + ic('search') + '<span>Tìm tài sản, nhân viên, trang</span><span class="kbd">Ctrl K</span></div>' +
           '<div class="tb-phai"><span class="tb-ngay" id="tbngay"></span>' +
+            '<button class="ibtn tb-qr" data-act="quetQR" title="Quét mã QR tài sản" aria-label="Quét mã QR">' + ic('qr') + '</button>' +
             '<button class="ibtn" data-act="lamMoi" title="Tải lại dữ liệu">' + ic('refresh') + '</button>' +
             '<span id="tnBox">' + taoNhanh() + '</span><span id="tkBox"></span></div></header>' +
         '<main class="pg" id="pg"><div class="cho"><div class="spin"></div>Đang tải dữ liệu</div></main>' +
@@ -6242,6 +6259,145 @@ ACT.mauLuu = function (el) {
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
   window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
 }
+</script>
+<script>
+/* ==========================================================================
+   Quét mã QR tài sản ngay trong app điện thoại (dùng html5-qrcode tải động)
+   ========================================================================== */
+var QR_CAM = null, QR_DANG = false;
+
+function napQRScanner() {
+  if (window.Html5Qrcode) return Promise.resolve();
+  return new Promise(function (res, rej) {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+    s.onload = function () { res(); };
+    s.onerror = function () { rej(new Error('Không tải được bộ quét QR. Kiểm tra kết nối mạng.')); };
+    document.head.appendChild(s);
+  });
+}
+
+/* Tách mã tài sản từ nội dung QR (?ts=MÃ, #ts/MÃ hoặc chuỗi mã trực tiếp) */
+function tachMaQR(txt) {
+  var s = String(txt || '').trim();
+  if (!s) return '';
+  try {
+    if (/^https?:\/\//i.test(s)) {
+      var u = new URL(s);
+      var q = u.searchParams.get('ts');
+      if (q) return q.trim();
+      var hm = u.hash.match(/ts\/([^/?#]+)/i);
+      if (hm) return decodeURIComponent(hm[1]).trim();
+    }
+  } catch (e) {}
+  return s;
+}
+
+/* Tìm tài sản khớp mã (không phân biệt hoa/thường) */
+function timTSTheoQR(txt) {
+  var ma = tachMaQR(txt);
+  if (!ma || !S.d) return { ma: ma, ts: null };
+  if (S.ix.ts[ma]) return { ma: ma, ts: S.ix.ts[ma] };
+  var th = ma.toLowerCase();
+  var a = S.d.ts.filter(function (x) { return String(x.ma).toLowerCase() === th; })[0] || null;
+  return { ma: a ? a.ma : ma, ts: a };
+}
+
+function xuLyKetQuaQR(txt) {
+  if (QR_DANG) return;
+  var kq = timTSTheoQR(txt);
+  if (!kq.ts) {
+    var loi = $('#qrLoi');
+    if (loi) loi.textContent = 'Không tìm thấy tài sản mã "' + kq.ma + '". Thử quét lại tem khác.';
+    return;
+  }
+  QR_DANG = true;
+  dongQuetQR().then(function () {
+    bao('Đã quét: ' + kq.ts.ten);
+    go('ts/' + kq.ts.ma);
+  });
+}
+
+function dongQuetQR() {
+  var box = $('#qrMo');
+  if (box) box.classList.remove('on');
+  var cam = QR_CAM; QR_CAM = null;
+  if (!cam) { QR_DANG = false; return Promise.resolve(); }
+  return Promise.resolve()
+    .then(function () { return cam.isScanning ? cam.stop() : null; })
+    .catch(function () {})
+    .then(function () { try { cam.clear(); } catch (e) {} QR_DANG = false; });
+}
+
+ACT.dongQR = function () { dongQuetQR(); };
+
+ACT.quetQR = function () {
+  var box = $('#qrMo');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'qrMo';
+    box.className = 'qr-mo';
+    box.innerHTML =
+      '<div class="qr-mo-dau"><b>Quét mã QR tài sản</b>' +
+        '<button type="button" class="ibtn" data-act="dongQR" aria-label="Đóng">' + ic('x') + '</button></div>' +
+      '<div class="qr-mo-than">' +
+        '<div id="qrCam"></div>' +
+        '<div class="qr-mo-loi" id="qrLoi"></div>' +
+        '<div class="qr-mo-goi">Đưa tem QR tài sản vào giữa khung hình</div>' +
+      '</div>' +
+      '<div class="qr-mo-chan">' +
+        '<label class="btn" tabindex="0">' + ic('img') + '<span>Chọn ảnh QR</span><input type="file" accept="image/*" id="qrAnh" hidden></label>' +
+        '<button type="button" class="btn" data-act="dongQR">Đóng</button>' +
+      '</div>';
+    document.body.appendChild(box);
+  }
+  $('#qrLoi').textContent = '';
+  $('#qrCam').innerHTML = '<div class="cho" style="min-height:260px;color:#fff"><div class="spin"></div>Đang mở camera</div>';
+  box.classList.add('on');
+  QR_DANG = false;
+
+  napQRScanner().then(function () {
+    if (!$('#qrMo.on')) return;
+    $('#qrCam').innerHTML = '';
+    QR_CAM = new Html5Qrcode('qrCam');
+    return QR_CAM.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
+      xuLyKetQuaQR,
+      function () {}
+    );
+  }).catch(function (e) {
+    var msg = (e && e.message) ? e.message : String(e || '');
+    $('#qrLoi').textContent = /NotAllowed|Permission/i.test(msg)
+      ? 'Chưa cấp quyền camera cho trình duyệt. Cấp quyền camera hoặc bấm "Chọn ảnh QR" bên dưới.'
+      : 'Không mở được camera (' + msg + '). Bạn có thể bấm "Chọn ảnh QR" bên dưới.';
+  });
+};
+
+/* Dự phòng: quét mã QR từ ảnh chụp có sẵn trong máy */
+document.addEventListener('change', function (e) {
+  if (e.target.id !== 'qrAnh' || !e.target.files || !e.target.files[0]) return;
+  var tep = e.target.files[0];
+  e.target.value = '';
+  $('#qrLoi').textContent = 'Đang đọc mã QR từ ảnh...';
+  napQRScanner().then(function () {
+    var p = QR_CAM && QR_CAM.isScanning ? QR_CAM.stop().catch(function () {}) : Promise.resolve();
+    return p.then(function () {
+      var cam = QR_CAM || new Html5Qrcode('qrCam');
+      QR_CAM = cam;
+      return cam.scanFile(tep, false);
+    });
+  }).then(function (txt) {
+    $('#qrLoi').textContent = '';
+    xuLyKetQuaQR(txt);
+  }).catch(function () {
+    $('#qrLoi').textContent = 'Không nhận diện được mã QR trong ảnh này.';
+  });
+});
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && $('#qrMo.on')) { e.stopImmediatePropagation(); dongQuetQR(); }
+}, true);
 </script>
 </body>
 </html>
